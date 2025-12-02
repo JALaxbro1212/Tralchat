@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KRCS Login + Game</title>
+
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        background: #e6e6e6;
+        font-family: "Segoe UI", Arial;
+        transition: background 0.4s ease;
+    }
+
+    /* Blackout Mode */
+    .blackout {
+        background: black !important;
+    }
+
+    /* LOGIN CARD */
+    #loginCard {
+        width: 500px;
+        background: white;
+        margin: 80px auto;
+        border-radius: 3px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+        overflow: hidden;
+        transition: opacity 0.4s ease;
+    }
+
+    .header {
+        background: #4A148C;
+        text-align: center;
+        padding: 20px 0 15px 0;
+        color: white;
+    }
+
+    .header-title {
+        font-size: 32px;
+        font-weight: bold;
+        letter-spacing: 1px;
+        margin-bottom: 2px;
+    }
+
+    .header-sub {
+        letter-spacing: 3px;
+        margin-top: -2px;
+    }
+
+    .body {
+        padding: 25px;
+    }
+
+    input {
+        width: 100%;
+        margin-top: 6px;
+        padding: 10px;
+        font-size: 15px;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+        margin-bottom: 25px;
+    }
+
+    button {
+        background: #6A1B9A;
+        color: white;
+        border: none;
+        padding: 10px 25px;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 16px;
+    }
+
+    .footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    /* GAME ELEMENTS HIDDEN INITIALLY */
+    canvas, #hud, #healthbar, #pauseText, #frenzyText {
+        display: none;
+    }
+
+    /* ----- Game CSS BELOW ----- */
+
+    body.gameMode { background: #222; }
+
+    #hud {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-size: 18px;
+      font-family: Arial;
+    }
+
+    #healthbar {
+      position: absolute;
+      top: 40px;
+      left: 10px;
+      width: 200px;
+      height: 20px;
+      border: 2px solid white;
+    }
+    #healthfill {
+      height: 100%;
+      background: limegreen;
+      width: 100%;
+    }
+
+    #pauseText {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      color: yellow;
+      display: none;
+    }
+
+    #frenzyText {
+      position: absolute;
+      top: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 48px;
+      color: orange;
+      display: none;
+      text-shadow: 2px 2px 8px red;
+    }
+</style>
+
+</head>
+<body>
+
+<!-- LOGIN CARD -->
+<div id="loginCard">
+    <div class="header">
+        <div class="header-title">KING’S RIDGE</div>
+        <div class="header-sub">CHRISTIAN SCHOOL</div>
+    </div>
+
+    <div class="body">
+        <label>Email Address</label>
+        <input type="email">
+
+        <div class="footer">
+            <button id="nextBtn">Next</button>
+
+            <label>
+                <input type="checkbox"> Remember me
+            </label>
+        </div>
+    </div>
+</div>
+
+
+<!-- ================== GAME STARTS HERE ================== -->
+
+<canvas id="game"></canvas>
+
+<div id="hud">
+  Kills: <span id="kills">0</span> | 
+  Weapon Lvl: <span id="weapon">1</span> | 
+  Materials: <span id="mats">0</span>
+</div>
+
+<div id="healthbar"><div id="healthfill"></div></div>
+
+<div id="pauseText">⏸ Paused</div>
+<div id="frenzyText">🔥 FRENZY 🔥</div>
+
+
+<script>
+/* ---------------- LOGIN -> GAME TRANSITION ---------------- */
+
+const loginCard = document.getElementById("loginCard");
+const nextBtn = document.getElementById("nextBtn");
+
+nextBtn.onclick = () => {
+    document.body.classList.add("blackout");
+
+    setTimeout(() => {
+        loginCard.style.display = "none";
+        document.body.classList.remove("blackout");
+        document.body.classList.add("gameMode");
+
+        startGameInstant();
+    }, 700);
+};
+
+
+/* ================== GAME CODE MERGED BELOW ================== */
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+// Fullscreen
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+const killsCounter = document.getElementById("kills");
+const weaponCounter = document.getElementById("weapon");
+const matsCounter = document.getElementById("mats");
+const healthFill = document.getElementById("healthfill");
+const pauseText = document.getElementById("pauseText");
+const frenzyText = document.getElementById("frenzyText");
+
+let kills = 0;
+let materials = 0;
+let weaponLevel = 1;
+let paused = false;
+let gameRunning = false;
+
+// Frenzy
+let frenzy = false;
+let frenzyInterval;
+
+let buildMode = false;
+let mouseX = 0, mouseY = 0;
+
+// Player
+const player = { 
+  x: canvas.width / 2, 
+  y: canvas.height / 2, 
+  size: 20, 
+  speed: 4, 
+  color: "deepskyblue", 
+  health: 100 
+};
+
+let bullets = [];
+let enemies = [];
+let structures = [];
+let powerups = [];
+
+// Start game instantly
+function startGameInstant() {
+  canvas.style.display = "block";
+  hud.style.display = "block";
+  healthbar.style.display = "block";
+
+  kills = 0; materials = 0; weaponLevel = 1;
+  bullets = []; enemies = []; structures = []; powerups = [];
+  player.x = canvas.width/2; player.y = canvas.height/2;
+  player.health = 100;
+  player.speed = 4;
+
+  frenzy = false;
+  buildMode = false;
+  frenzyText.style.display = "none";
+
+  gameRunning = true;
+  updateHealth();
+}
+
+// RETURN TO LOGIN
+function returnToLogin() {
+    location.reload();
+}
+
+// Enemy spawn
+function spawnEnemy() {
+  if (!gameRunning || paused) return;
+  const side = Math.floor(Math.random() * 4);
+  let x, y;
+  if (side === 0) { x = 0; y = Math.random()*canvas.height; }
+  else if (side === 1) { x = canvas.width; y = Math.random()*canvas.height; }
+  else if (side === 2) { x = Math.random()*canvas.width; y = 0; }
+  else { x = Math.random()*canvas.width; y = canvas.height; }
+  enemies.push({ x, y, size: 20, speed: 1.2, color: "crimson" });
+}
+setInterval(spawnEnemy, 2000);
+
+// Powerups
+function spawnPowerup() {
+  if (!gameRunning || paused) return;
+  const type = Math.random();
+  let powerType, color;
+  if (type < 0.33) { powerType="weapon"; color="lime"; }
+  else if (type < 0.66) { powerType="mats"; color="cyan"; }
+  else { powerType="frenzy"; color="gold"; }
+  powerups.push({
+    x: Math.random()*canvas.width,
+    y: Math.random()*canvas.height,
+    size: 14,
+    type: powerType,
+    color: color
+  });
+}
+setInterval(spawnPowerup, 8000);
+
+// Controls
+const keys = {};
+window.addEventListener("keydown", e => {
+
+  // P → PAUSE + RETURN TO LOGIN
+  if (e.key === "p" && gameRunning) {
+    paused = true;
+    pauseText.style.display = "block";
+    returnToLogin();
+  }
+
+  if (e.key === "q" && gameRunning)
+    buildMode = !buildMode;
+
+  keys[e.key] = true;
+});
+window.addEventListener("keyup", e => keys[e.key] = false);
+
+// Mouse
+window.addEventListener("mousemove", e => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+});
+
+// Shooting and building
+window.addEventListener("click", e => {
+  if (!gameRunning || paused) return;
+  if (buildMode) {
+    if (materials >= 10) {
+      structures.push({ x: mouseX - 40, y: mouseY - 40, w: 80, h: 80 });
+      materials -= 10;
+      matsCounter.textContent = materials;
+    }
+    buildMode = false;
+  } else if (!frenzy) {
+    shoot(e.clientX, e.clientY);
+  }
+});
+
+function shoot(tx, ty) {
+  const angle = Math.atan2(ty - player.y, tx - player.x);
+  const speed = 6 + weaponLevel * 1.5;
+  bullets.push({
+    x: player.x, y: player.y,
+    dx: Math.cos(angle)*speed,
+    dy: Math.sin(angle)*speed,
+    size: 5 + weaponLevel,
+    color: "yellow"
+  });
+}
+
+function activateFrenzy() {
+  if (frenzy) return;
+  frenzy = true;
+  frenzyText.style.display = "block";
+  player.speed = 9;
+
+  frenzyInterval = setInterval(() => {
+    if (!gameRunning || paused) return;
+    let tx = player.x + 1, ty = player.y;
+    if (enemies.length > 0) {
+      tx = enemies[0].x; ty = enemies[0].y;
+    }
+    shoot(tx, ty);
+  }, 150);
+
+  setTimeout(() => {
+    frenzy = false;
+    player.speed = 4;
+    frenzyText.style.display = "none";
+    clearInterval(frenzyInterval);
+  }, 7000);
+}
+
+
+function update() {
+  if (!gameRunning || paused) return;
+
+  // Movement
+  let oldX = player.x, oldY = player.y;
+  if (keys["w"] || keys["ArrowUp"]) player.y -= player.speed;
+  if (keys["s"] || keys["ArrowDown"]) player.y += player.speed;
+  if (keys["a"] || keys["ArrowLeft"]) player.x -= player.speed;
+  if (keys["d"] || keys["ArrowRight"]) player.x += player.speed;
+
+  if (player.x-player.size < 0) player.x = player.size;
+  if (player.x+player.size > canvas.width) player.x = canvas.width-player.size;
+  if (player.y-player.size < 0) player.y = player.size;
+  if (player.y+player.size > canvas.height) player.y = canvas.height-player.size;
+
+  // Collisions (walls)
+  structures.forEach(s => {
+    if (player.x+player.size > s.x &&
+        player.x-player.size < s.x+s.w &&
+        player.y+player.size > s.y &&
+        player.y-player.size < s.y+s.h) {
+      player.x = oldX;
+      player.y = oldY;
+    }
+  });
+
+  // Bullets
+  bullets.forEach((b,i)=>{
+    b.x+=b.dx; b.y+=b.dy;
+    let hitWall = structures.some(s =>
+      b.x+b.size>s.x && b.x-b.size<s.x+s.w &&
+      b.y+b.size>s.y && b.y-b.size<s.y+s.h
+    );
+    if (hitWall || b.x<0||b.x>canvas.width||b.y<0||b.y>canvas.height)
+      bullets.splice(i,1);
+  });
+
+  // Enemies
+  enemies.forEach((en,ei)=>{
+    const ang = Math.atan2(player.y-en.y, player.x-en.x);
+    en.x += Math.cos(ang)*en.speed;
+    en.y += Math.sin(ang)*en.speed;
+
+    // Player hit
+    if (Math.hypot(player.x-en.x, player.y-en.y) < player.size+en.size) {
+      player.health -= 0.5;
+      updateHealth();
+      if (player.health <= 0) {
+        alert("💀 Game Over! " + kills + " kills.");
+        returnToLogin();
+      }
+    }
+
+    // Wall collision
+    structures.forEach(s=>{
+      if (en.x+en.size>s.x && en.x-en.size<s.x+s.w &&
+          en.y+en.size>s.y && en.y-en.size<s.y+s.h) {
+        if (en.x < s.x) en.x = s.x - en.size;
+        if (en.x > s.x+s.w) en.x = s.x+s.w + en.size;
+        if (en.y < s.y) en.y = s.y - en.size;
+        if (en.y > s.y+s.h) en.y = s.y+s.h + en.size;
+      }
+    });
+
+    // Bullet hits enemy
+    bullets.forEach((b,bi)=>{
+      if (Math.hypot(b.x-en.x,b.y-en.y)<en.size+b.size){
+        enemies.splice(ei,1);
+        bullets.splice(bi,1);
+        kills++; materials+=5;
+        killsCounter.textContent=kills;
+        matsCounter.textContent=materials;
+      }
+    });
+  });
+
+  // Powerups
+  powerups.forEach((p,pi)=>{
+    if (Math.hypot(player.x-p.x, player.y-p.y)<player.size+p.size){
+      if (p.type==="weapon") weaponLevel++;
+      else if (p.type==="mats") materials+=20;
+      else if (p.type==="frenzy") activateFrenzy();
+      weaponCounter.textContent = weaponLevel;
+      matsCounter.textContent = materials;
+      powerups.splice(pi,1);
+    }
+  });
+}
+
+function updateHealth() {
+  healthFill.style.width = player.health + "%";
+  healthFill.style.background =
+      player.health > 60 ? "limegreen" :
+      player.health > 30 ? "orange" : "red";
+}
+
+function draw() {
+  if (!gameRunning) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.fillStyle=player.color;
+  ctx.beginPath();
+  ctx.arc(player.x,player.y,player.size,0,Math.PI*2);
+  ctx.fill();
+
+  bullets.forEach(b=>{
+    ctx.fillStyle=b.color;
+    ctx.beginPath();
+    ctx.arc(b.x,b.y,b.size,0,Math.PI*2);
+    ctx.fill();
+  });
+
+  enemies.forEach(en=>{
+    ctx.fillStyle=en.color;
+    ctx.beginPath();
+    ctx.arc(en.x,en.y,en.size,0,Math.PI*2);
+    ctx.fill();
+  });
+
+  structures.forEach(s=>{
+    ctx.fillStyle="gray";
+    ctx.fillRect(s.x,s.y,s.w,s.h);
+  });
+
+  powerups.forEach(p=>{
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+    ctx.fill();
+  });
+
+  if (buildMode) {
+    ctx.strokeStyle="white";
+    ctx.lineWidth=2;
+    ctx.strokeRect(mouseX-40,mouseY-40,80,80);
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+updateHealth();
+gameLoop();
+
+</script>
+
+</body>
+</html>
